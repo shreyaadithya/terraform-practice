@@ -38,21 +38,34 @@ resource "aws_security_group" "this" {
 resource "aws_instance" "this" {
   ami           = var.ami
   instance_type = var.instance_type
-  key_name = aws_key_pair.test_key.id
+  key_name      = aws_key_pair.test_key.id
   subnet_id     = var.subnet_id
   vpc_security_group_ids = [aws_security_group.this.id]
 
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              yum install -y httpd
-              systemctl enable httpd
-              systemctl start httpd
-              echo "<h1>Hello from Terraform EC2!</h1>" > /var/www/html/index.html
-              EOF
-
   tags = {
     Name = var.name
+  }
+}
+
+# Null resource replaces user_data
+resource "null_resource" "install_httpd" {
+  depends_on = [aws_instance.this]
+
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("~/.ssh/id_ed25519")   # private key used to connect
+      host        = aws_instance.this.public_ip # instance public IP
+    }
+
+    inline = [
+      "sudo yum update -y",
+      "sudo yum install -y httpd",
+      "sudo systemctl enable httpd",
+      "sudo systemctl start httpd",
+      "echo '<h1>Hello from Terraform Null Resource!</h1>' | sudo tee /var/www/html/index.html"
+    ]
   }
 }
 
